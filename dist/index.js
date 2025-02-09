@@ -1,4 +1,5 @@
-// src/index.ts
+// src/client.ts
+import { MongoClient } from "mongodb";
 import {
   DatabaseAdapter,
   elizaLogger
@@ -1044,7 +1045,45 @@ var MongoDBDatabaseAdapter = class extends DatabaseAdapter {
     }
   }
 };
+var mongoDBAdapter = {
+  init: (runtime) => {
+    const MONGODB_CONNECTION_STRING = runtime.getSetting("MONGODB_CONNECTION_STRING");
+    if (MONGODB_CONNECTION_STRING) {
+      elizaLogger.log("Initializing database on MongoDB Atlas");
+      const client = new MongoClient(MONGODB_CONNECTION_STRING, {
+        maxPoolSize: 100,
+        minPoolSize: 5,
+        maxIdleTimeMS: 6e4,
+        connectTimeoutMS: 1e4,
+        serverSelectionTimeoutMS: 5e3,
+        socketTimeoutMS: 45e3,
+        compressors: ["zlib"],
+        retryWrites: true,
+        retryReads: true
+      });
+      const dbName = runtime.getSetting("MONGODB_DATABASE") || "elizaAgent";
+      const db = new MongoDBDatabaseAdapter(client, dbName);
+      db.init().then(() => {
+        elizaLogger.success("Successfully connected to MongoDB Atlas");
+      }).catch((error) => {
+        elizaLogger.error("Failed to connect to MongoDB Atlas:", error);
+        throw error;
+      });
+      return db;
+    } else {
+      throw new Error("MONGODB_CONNECTION_STRING is not set");
+    }
+  }
+};
+
+// src/index.ts
+var mongodbPlugin = {
+  name: "mongodb",
+  description: "MongoDB database adapter plugin",
+  adapters: [mongoDBAdapter]
+};
+var index_default = mongodbPlugin;
 export {
-  MongoDBDatabaseAdapter
+  index_default as default
 };
 //# sourceMappingURL=index.js.map
