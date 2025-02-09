@@ -1,4 +1,4 @@
-import { mongoDBAdapter } from './client';
+import { mongoDBAdapter } from "./client";
 
 const mongodbPlugin = {
     name: "mongodb",
