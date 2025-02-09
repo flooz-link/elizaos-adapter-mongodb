@@ -20,7 +20,8 @@ export default defineConfig({
         "https",
         "http",
         "agentkeepalive",
-        "@anush008/tokenizers"
+        "@anush008/tokenizers",
+        "@elizaos/core",
     ],
     esbuildOptions(options) {
         options.conditions = ["module"]
