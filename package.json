@@ -6,7 +6,6 @@
     "type": "module",
     "types": "dist/index.d.ts",
     "dependencies": {
-        "@elizaos/core": "workspace:*",
         "mongodb": "^6.3.0",
         "uuid": "^9.0.1"
     },
