@@ -1,4 +1,4 @@
-import { mongoDBAdapter } from "./client";
+import { mongoDBAdapter, MongoDBDatabaseAdapter } from "./client";
 
 const mongodbPlugin = {
   name: "mongodb",
@@ -6,4 +6,8 @@ const mongodbPlugin = {
   adapters: [mongoDBAdapter],
 };
 
-export default mongodbPlugin;
+export {
+  mongodbPlugin,
+  MongoDBDatabaseAdapter,
+  MongoDBDatabaseAdapter as default,
+};

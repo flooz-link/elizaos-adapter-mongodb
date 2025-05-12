@@ -10,6 +10,7 @@
         "uuid": "^9.0.1"
     },
     "devDependencies": {
+        "@elizaos/core": "^0.25.9",
         "@eslint/eslintrc": "^3.3.1",
         "@types/jest": "^29.5.11",
         "@types/node": "^20.11.5",
