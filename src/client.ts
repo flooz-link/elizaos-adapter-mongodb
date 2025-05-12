@@ -12,7 +12,6 @@ import {
   type Relationship,
   type UUID,
   elizaLogger,
-  type Plugin,
   type Adapter,
   type IAgentRuntime,
 } from "@elizaos/core";

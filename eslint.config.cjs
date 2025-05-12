@@ -37,7 +37,7 @@ module.exports = [
             'prettier/prettier': 'error',
 
             // General ESLint rules
-            'no-console': 'warn',
+            'no-console': 'off',
             'no-debugger': 'error'
         },
         ignores: ['dist/', 'node_modules/']
