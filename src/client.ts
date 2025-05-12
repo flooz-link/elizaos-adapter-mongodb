@@ -40,7 +40,7 @@ interface KnowledgeDocument {
   isShared: boolean;
 }
 
-class MongoDBDatabaseAdapter
+export class MongoDBDatabaseAdapter
   extends DatabaseAdapter<MongoClient>
   implements IDatabaseCacheAdapter
 {
@@ -1596,5 +1596,3 @@ export const mongoDBAdapter: Adapter = {
     }
   },
 };
-
-export { MongoDBDatabaseAdapter };
