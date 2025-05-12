@@ -27,7 +27,7 @@ jobs:
           echo "@flooz-link:registry=https://npm.pkg.github.com" >> .npmrc
       
       - run: pnpm install
-      - run: pnpm lint
+      - run: pnpm lint:check
 
   build:
     needs: lint
