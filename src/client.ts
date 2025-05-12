@@ -1596,3 +1596,7 @@ export const mongoDBAdapter: Adapter = {
     }
   },
 };
+
+export {
+  MongoDBDatabaseAdapter
+};
