@@ -40,7 +40,7 @@ interface KnowledgeDocument {
   isShared: boolean;
 }
 
-class MongoDBDatabaseAdapter
+export class MongoDBDatabaseAdapter
   extends DatabaseAdapter<MongoClient>
   implements IDatabaseCacheAdapter
 {
@@ -461,13 +461,15 @@ class MongoDBDatabaseAdapter
         // );
         isUnique = similarMemories.length === 0;
       }
-      const content = JSON.stringify(memory.content);
       const createdAt = memory.createdAt ?? Date.now();
 
       await this.database.collection("memories").insertOne({
         id: memory.id ?? v4(),
         type: tableName,
-        content,
+        content: {
+          content: memory.content,
+          ...memory.content,
+        },
         embedding: memory.embedding ? Array.from(memory.embedding) : null,
         userId: memory.userId,
         roomId: memory.roomId,
