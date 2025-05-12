@@ -1,0 +1,62 @@
+name: Publish package to GitHub Packages
+on:
+  release:
+    types: [created]
+  push:
+    branches:
+      - main
+jobs:
+  lint:
+    runs-on: ubuntu-latest 
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9.15.4
+      
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20.18.1'
+          cache: 'pnpm'
+
+      - name: Setup .npmrc file
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
+          echo "@flooz-link:registry=https://npm.pkg.github.com" >> .npmrc
+      
+      - run: pnpm install
+      - run: pnpm lint
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'pnpm'
+      
+      - name: Setup .npmrc file
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
+          echo "@flooz-link:registry=https://npm.pkg.github.com" >> .npmrc
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      - name: Build
+        run: pnpm build
+
+      - run: pnpm publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
