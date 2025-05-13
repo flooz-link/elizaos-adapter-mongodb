@@ -649,11 +649,11 @@ export class MongoDBDatabaseAdapter
     }));
   }
 
-          /**
-       * Optimized Levenshtein distance calculation with early termination
-       * and matrix reuse for better performance
-       */
-        private levenshteinFunctionString = `
+  /**
+   * Optimized Levenshtein distance calculation with early termination
+   * and matrix reuse for better performance
+   */
+  private levenshteinFunctionString = `
           function(text, searchTerm) {
             function calculateLevenshteinDistance(str1, str2) {
               if (str1 === str2) return 0;
@@ -705,7 +705,6 @@ export class MongoDBDatabaseAdapter
     let results: { embedding: number[]; levenshtein_score: number }[] = [];
 
     try {
-
       const pipeline = [
         {
           $search: {
@@ -756,78 +755,80 @@ export class MongoDBDatabaseAdapter
         "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
         data,
       );
-      // // Get total count for progress tracking
-      // const totalCount = await this.database
-      //   .collection("memories")
-      //   .countDocuments(
-      //     // {
-      //     // type: opts.query_table_name,
-      //     // [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-      //     //   $exists: true,
-      //     // },
-      //     {
-      //       index: "memoriesContent",
-      //       text: {
-      //         query: opts.query_input,
-      //         path: `content.${opts.query_field_name}.${opts.query_field_sub_name}`
-      //       }
-      //   });
 
-      // let processed = 0;
+      // Get total count for progress tracking
+      const totalCount = await this.database
+        .collection("memories")
+        .countDocuments(
+          // {
+          // type: opts.query_table_name,
+          // [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
+          //   $exists: true,
+          // },
+          {
+            index: "memoriesContent",
+            text: {
+              query: opts.query_input,
+              path: `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+            },
+          },
+        );
 
-      // while (processed < totalCount) {
-      //   // Fetch batch of documents
-      //   const memories = await this.database
-      //     .collection("memories")
-      //     .find({
-      //       type: opts.query_table_name,
-      //       [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-      //         $exists: true,
-      //       },
-      //     })
-      //     .skip(processed)
-      //     .limit(BATCH_SIZE)
-      //     .toArray();
+      let processed = 0;
 
-      //   // Process batch
-      //   const batchResults = memories
-      //     .map((memory) => {
-      //       try {
-      //         const content =
-      //           memory.content[opts.query_field_name][
-      //             opts.query_field_sub_name
-      //           ];
-      //         if (!content || typeof content !== "string") {
-      //           return null;
-      //         }
+      while (processed < totalCount) {
+        // Fetch batch of documents
+        const memories = await this.database
+          .collection("memories")
+          .find({
+            type: opts.query_table_name,
+            [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
+              $exists: true,
+            },
+          })
+          .skip(processed)
+          .limit(10000)
+          .toArray();
 
-      //         return {
-      //           embedding: Array.from(memory.embedding),
-      //           levenshtein_score: this.calculateLevenshteinDistanceOptimized(
-      //             content.toLowerCase(),
-      //             opts.query_input.toLowerCase(),
-      //           ),
-      //         };
-      //       } catch (error) {
-      //         console.warn(`Error processing memory document: ${error}`);
-      //         return null;
-      //       }
-      //     })
-      //     .filter(
-      //       (
-      //         result,
-      //       ): result is { embedding: number[]; levenshtein_score: number } =>
-      //         result !== null,
-      //     );
+        // Process batch
+        const batchResults = memories
+          .map((memory) => {
+            try {
+              const content =
+                memory.content[opts.query_field_name][
+                  opts.query_field_sub_name
+                ];
+              if (!content || typeof content !== "string") {
+                return null;
+              }
 
-      //   // Merge batch results
-      //   results = this.mergeAndSortResults(
-      //     results,
-      //     batchResults,
-      //     opts.query_match_count,
-      //   );
-      //   processed += memories.length;
-      // }
+              return {
+                embedding: Array.from(memory.embedding),
+                levenshtein_score: this.calculateLevenshteinDistanceOptimized(
+                  content.toLowerCase(),
+                  opts.query_input.toLowerCase(),
+                ),
+              };
+            } catch (error) {
+              console.warn(`Error processing memory document: ${error}`);
+              return null;
+            }
+          })
+          .filter(
+            (
+              result,
+            ): result is { embedding: number[]; levenshtein_score: number } =>
+              result !== null,
+          );
+
+        // Merge batch results
+        results = this.mergeAndSortResults(
+          results,
+          batchResults,
+          opts.query_match_count,
+        );
+        processed += memories.length;
+      }
 
       return results;
     } catch (error) {
@@ -840,7 +841,7 @@ export class MongoDBDatabaseAdapter
     }
   }
 
-  private calculateLevenshteinDistance(str1, str2) {
+  private calculateLevenshteinDistanceOptimized(str1, str2) {
     if (str1 === str2) return 0;
     if (str1.length === 0) return str2.length;
     if (str2.length === 0) return str1.length;
@@ -872,8 +873,6 @@ export class MongoDBDatabaseAdapter
     }
     return matrix[str1.length][str2.length];
   }
-
-
 
   // Cache for reusing Levenshtein distance matrix
   private levenshteinMatrix: number[][] = [];
