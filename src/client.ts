@@ -687,7 +687,7 @@ export class MongoDBDatabaseAdapter
             score: { $meta: "textScore" },
             levDistance: {
               $function: {
-                body: function (text, searchTerm) {
+                body: `function (text, searchTerm) {
                   function calculateLevenshteinDistance(str1, str2) {
                     // Early termination for identical strings
                     if (str1 === str2) return 0;
@@ -733,7 +733,7 @@ export class MongoDBDatabaseAdapter
                   }
 
                   return calculateLevenshteinDistance(text, searchTerm);
-                },
+                }`,
                 args: [
                   `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
                   opts.query_input,
