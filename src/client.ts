@@ -663,11 +663,19 @@ export class MongoDBDatabaseAdapter
 
     try {
       const data = await this.database.collection.aggregate([
-        // Match documents with type "message" AND text search match
+
+        {
+          $search: {
+            index: "memoriesContent",
+            text: {
+              query: opts.query_input,
+              path: ["content.content.text", "content.text"],
+            },
+          },
+        },
         {
           $match: {
             type: opts.query_table_name,
-            $text: { $search: opts.query_input },
           },
         },
 
