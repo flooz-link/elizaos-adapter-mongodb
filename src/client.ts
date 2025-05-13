@@ -663,7 +663,6 @@ export class MongoDBDatabaseAdapter
 
     try {
       const data = await this.database.collection.aggregate([
-
         {
           $search: {
             index: "memoriesContent",
