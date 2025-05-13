@@ -726,11 +726,6 @@ export class MongoDBDatabaseAdapter
           opts.query_match_count,
         );
         processed += memories.length;
-
-        // Log progress for long operations
-        if (totalCount > BATCH_SIZE) {
-          console.log(`Processed ${processed}/${totalCount} documents`);
-        }
       }
 
       return results;
