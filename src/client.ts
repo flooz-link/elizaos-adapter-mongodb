@@ -737,7 +737,10 @@ export class MongoDBDatabaseAdapter
         // Limit results
         { $limit: opts.query_match_count },
       ]);
-      console.log("[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:", data);
+      console.log(
+        "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
+        data,
+      );
       // // Get total count for progress tracking
       // const totalCount = await this.database
       //   .collection("memories")
