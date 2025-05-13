@@ -658,75 +658,158 @@ export class MongoDBDatabaseAdapter
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     await this.ensureConnection();
-    const BATCH_SIZE = 1000; // Process in chunks of 1000 documents
+
     let results: { embedding: number[]; levenshtein_score: number }[] = [];
 
     try {
-      // Get total count for progress tracking
-      const totalCount = await this.database
-        .collection("memories")
-        .countDocuments({
-          type: opts.query_table_name,
-          [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-            $exists: true,
-          },
-        });
-
-      let processed = 0;
-
-      while (processed < totalCount) {
-        // Fetch batch of documents
-        const memories = await this.database
-          .collection("memories")
-          .find({
+      const data = await this.database.collection.aggregate([
+        // Match documents with type "message" AND text search match
+        {
+          $match: {
             type: opts.query_table_name,
-            [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-              $exists: true,
+            $text: { $search: opts.query_input },
+          },
+        },
+
+        // Add Levenshtein distance field
+        {
+          $addFields: {
+            score: { $meta: "textScore" },
+            levDistance: {
+              $function: {
+                body: function (text, searchTerm) {
+                  function calculateLevenshteinDistance(str1, str2) {
+                    // Early termination for identical strings
+                    if (str1 === str2) return 0;
+
+                    // Early termination for empty strings
+                    if (str1.length === 0) return str2.length;
+                    if (str2.length === 0) return str1.length;
+
+                    // Use shorter string as inner loop for better performance
+                    if (str1.length > str2.length) {
+                      [str1, str2] = [str2, str1];
+                    }
+
+                    // Initialize matrix
+                    const rows = str1.length + 1;
+                    const cols = str2.length + 1;
+                    let matrix: any[] = [];
+
+                    for (let i = 0; i < rows; i++) {
+                      matrix[i] = new Array(cols);
+                    }
+
+                    // Initialize first row and column
+                    for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
+                    for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
+
+                    // Calculate minimum edit distance
+                    for (let i = 1; i <= str1.length; i++) {
+                      for (let j = 1; j <= str2.length; j++) {
+                        if (str1[i - 1] === str2[j - 1]) {
+                          matrix[i][j] = matrix[i - 1][j - 1];
+                        } else {
+                          matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1, // substitution
+                            matrix[i][j - 1] + 1, // insertion
+                            matrix[i - 1][j] + 1, // deletion
+                          );
+                        }
+                      }
+                    }
+
+                    return matrix[str1.length][str2.length];
+                  }
+
+                  return calculateLevenshteinDistance(text, searchTerm);
+                },
+                args: ["$content.text", "your search term"],
+                lang: "js",
+              },
             },
-          })
-          .skip(processed)
-          .limit(BATCH_SIZE)
-          .toArray();
+          },
+        },
 
-        // Process batch
-        const batchResults = memories
-          .map((memory) => {
-            try {
-              const content =
-                memory.content[opts.query_field_name][
-                  opts.query_field_sub_name
-                ];
-              if (!content || typeof content !== "string") {
-                return null;
-              }
+        // Sort by Levenshtein distance (closest matches first)
+        { $sort: { levDistance: 1 } },
 
-              return {
-                embedding: Array.from(memory.embedding),
-                levenshtein_score: this.calculateLevenshteinDistanceOptimized(
-                  content.toLowerCase(),
-                  opts.query_input.toLowerCase(),
-                ),
-              };
-            } catch (error) {
-              console.warn(`Error processing memory document: ${error}`);
-              return null;
-            }
-          })
-          .filter(
-            (
-              result,
-            ): result is { embedding: number[]; levenshtein_score: number } =>
-              result !== null,
-          );
+        // Limit results
+        { $limit: opts.query_match_count },
+      ]);
+      console.log("[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:", data);
+      // // Get total count for progress tracking
+      // const totalCount = await this.database
+      //   .collection("memories")
+      //   .countDocuments(
+      //     // {
+      //     // type: opts.query_table_name,
+      //     // [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
+      //     //   $exists: true,
+      //     // },
+      //     {
+      //       index: "memoriesContent",
+      //       text: {
+      //         query: opts.query_input,
+      //         path: `content.${opts.query_field_name}.${opts.query_field_sub_name}`
+      //       }
+      //   });
 
-        // Merge batch results
-        results = this.mergeAndSortResults(
-          results,
-          batchResults,
-          opts.query_match_count,
-        );
-        processed += memories.length;
-      }
+      // let processed = 0;
+
+      // while (processed < totalCount) {
+      //   // Fetch batch of documents
+      //   const memories = await this.database
+      //     .collection("memories")
+      //     .find({
+      //       type: opts.query_table_name,
+      //       [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
+      //         $exists: true,
+      //       },
+      //     })
+      //     .skip(processed)
+      //     .limit(BATCH_SIZE)
+      //     .toArray();
+
+      //   // Process batch
+      //   const batchResults = memories
+      //     .map((memory) => {
+      //       try {
+      //         const content =
+      //           memory.content[opts.query_field_name][
+      //             opts.query_field_sub_name
+      //           ];
+      //         if (!content || typeof content !== "string") {
+      //           return null;
+      //         }
+
+      //         return {
+      //           embedding: Array.from(memory.embedding),
+      //           levenshtein_score: this.calculateLevenshteinDistanceOptimized(
+      //             content.toLowerCase(),
+      //             opts.query_input.toLowerCase(),
+      //           ),
+      //         };
+      //       } catch (error) {
+      //         console.warn(`Error processing memory document: ${error}`);
+      //         return null;
+      //       }
+      //     })
+      //     .filter(
+      //       (
+      //         result,
+      //       ): result is { embedding: number[]; levenshtein_score: number } =>
+      //         result !== null,
+      //     );
+
+      //   // Merge batch results
+      //   results = this.mergeAndSortResults(
+      //     results,
+      //     batchResults,
+      //     opts.query_match_count,
+      //   );
+      //   processed += memories.length;
+      // }
 
       return results;
     } catch (error) {
