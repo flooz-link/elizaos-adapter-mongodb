@@ -751,84 +751,90 @@ export class MongoDBDatabaseAdapter
         .collection("memories")
         .aggregate(pipeline)
         .toArray();
-      console.log(
-        "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
-        data,
-      );
+      // console.log(
+      //   "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
+      //   data,
+      // );
+      results = data.map((it: { embedding: number[]; levDistance: number }) => {
+        return {
+          embedding: it.embedding,
+          levenshtein_score: it.levDistance,
+        };
+      });
 
-      // Get total count for progress tracking
-      const totalCount = await this.database
-        .collection("memories")
-        .countDocuments(
-          // {
-          // type: opts.query_table_name,
-          // [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-          //   $exists: true,
-          // },
-          {
-            index: "memoriesContent",
-            text: {
-              query: opts.query_input,
-              path: `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
-            },
-          },
-        );
+      // // Get total count for progress tracking
+      // const totalCount = await this.database
+      //   .collection("memories")
+      //   .countDocuments(
+      //     // {
+      //     // type: opts.query_table_name,
+      //     // [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
+      //     //   $exists: true,
+      //     // },
+      //     {
+      //       index: "memoriesContent",
+      //       text: {
+      //         query: opts.query_input,
+      //         path: `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+      //       },
+      //     },
+      //   );
 
-      let processed = 0;
+      // let processed = 0;
 
-      while (processed < totalCount) {
-        // Fetch batch of documents
-        const memories = await this.database
-          .collection("memories")
-          .find({
-            type: opts.query_table_name,
-            [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-              $exists: true,
-            },
-          })
-          .skip(processed)
-          .limit(10000)
-          .toArray();
+      // while (processed < totalCount) {
+      //   // Fetch batch of documents
+      //   const memories = await this.database
+      //     .collection("memories")
+      //     .find({
+      //       type: opts.query_table_name,
+      //       [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
+      //         $exists: true,
+      //       },
+      //     })
+      //     .skip(processed)
+      //     .limit(10000)
+      //     .toArray();
 
-        // Process batch
-        const batchResults = memories
-          .map((memory) => {
-            try {
-              const content =
-                memory.content[opts.query_field_name][
-                  opts.query_field_sub_name
-                ];
-              if (!content || typeof content !== "string") {
-                return null;
-              }
+      //   // Process batch
+      //   const batchResults = memories
+      //     .map((memory) => {
+      //       try {
+      //         const content =
+      //           memory.content[opts.query_field_name][
+      //             opts.query_field_sub_name
+      //           ];
+      //         if (!content || typeof content !== "string") {
+      //           return null;
+      //         }
 
-              return {
-                embedding: Array.from(memory.embedding),
-                levenshtein_score: this.calculateLevenshteinDistanceOptimized(
-                  content.toLowerCase(),
-                  opts.query_input.toLowerCase(),
-                ),
-              };
-            } catch (error) {
-              console.warn(`Error processing memory document: ${error}`);
-              return null;
-            }
-          })
-          .filter(
-            (
-              result,
-            ): result is { embedding: number[]; levenshtein_score: number } =>
-              result !== null,
-          );
+      //         return {
+      //           embedding: Array.from(memory.embedding),
+      //           levenshtein_score: this.calculateLevenshteinDistanceOptimized(
+      //             content.toLowerCase(),
+      //             opts.query_input.toLowerCase(),
+      //           ),
+      //         };
+      //       } catch (error) {
+      //         console.warn(`Error processing memory document: ${error}`);
+      //         return null;
+      //       }
+      //     })
+      //     .filter(
+      //       (
+      //         result,
+      //       ): result is { embedding: number[]; levenshtein_score: number } =>
+      //         result !== null,
+      //     );
 
-        // Merge batch results
-        results = this.mergeAndSortResults(
-          results,
-          batchResults,
-          opts.query_match_count,
-        );
-        processed += memories.length;
-      }
+      //   // Merge batch results
+      //   results = this.mergeAndSortResults(
+      //     results,
+      //     batchResults,
+      //     opts.query_match_count,
+      //   );
+      //   processed += memories.length;
+      // }
 
       return results;
     } catch (error) {
