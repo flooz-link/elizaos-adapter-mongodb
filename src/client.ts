@@ -752,7 +752,8 @@ export class MongoDBDatabaseAdapter
       ];
       const data = await this.database
         .collection("memories")
-        .aggregate(pipeline);
+        .aggregate(pipeline)
+        .toArray();
       console.log(
         "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
         data,
