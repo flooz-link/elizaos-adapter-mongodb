@@ -734,7 +734,10 @@ export class MongoDBDatabaseAdapter
 
                   return calculateLevenshteinDistance(text, searchTerm);
                 },
-                args: ["$content.text", "your search term"],
+                args: [
+                  `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+                  opts.query_input,
+                ],
                 lang: "js",
               },
             },
