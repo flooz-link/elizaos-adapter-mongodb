@@ -662,13 +662,16 @@ export class MongoDBDatabaseAdapter
     let results: { embedding: number[]; levenshtein_score: number }[] = [];
 
     try {
-      const data = await this.database.collection.aggregate([
+      const pipeline = [
         {
           $search: {
             index: "memoriesContent",
             text: {
               query: opts.query_input,
-              path: ["content.content.text", "content.text"],
+              path: [
+                `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+                "content.text",
+              ],
             },
           },
         },
@@ -743,10 +746,14 @@ export class MongoDBDatabaseAdapter
 
         // Limit results
         { $limit: opts.query_match_count },
-      ]);
+      ];
+      const data = await this.database
+        .collection("memories")
+        .aggregate(pipeline);
       console.log(
         "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
         data,
+        data.toArray(),
       );
       // // Get total count for progress tracking
       // const totalCount = await this.database
