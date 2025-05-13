@@ -753,7 +753,6 @@ export class MongoDBDatabaseAdapter
       console.log(
         "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
         data,
-        data.toArray(),
       );
       // // Get total count for progress tracking
       // const totalCount = await this.database
