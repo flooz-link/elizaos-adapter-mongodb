@@ -1013,7 +1013,10 @@ export class MongoDBDatabaseAdapter
       .collection("participants")
       .aggregate(pipeline)
       .toArray();
-    return rooms;
+    if (rooms.length > 0) {
+      return rooms[0]["rooms"];
+    }
+    return [];
   }
 
   async addParticipant(userId: UUID, roomId: UUID): Promise<boolean> {
