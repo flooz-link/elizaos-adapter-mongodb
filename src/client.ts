@@ -1002,9 +1002,16 @@ export class MongoDBDatabaseAdapter
 
   async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
     await this.ensureConnection();
+    const pipeline = [
+      { $match: { userId: { $in: userIds } } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 20 },
+      { $group: { _id: null, rooms: { $addToSet: "$roomId" } } },
+      { $project: { _id: 0, rooms: 1 } }
+    ];
     const rooms = await this.database
       .collection("participants")
-      .distinct("roomId", { userId: { $in: userIds } });
+      .pipeline(pipeline);
     return rooms;
   }
 
