@@ -723,7 +723,17 @@ export class MongoDBDatabaseAdapter
             type: opts.query_table_name,
           },
         },
-
+        {
+          $addFields: {
+            score: { $meta: "searchScore" },
+          },
+        },
+        {
+          $sort: {
+            score: -1, // Sort by relevance score in descending order
+          },
+        },
+        { $limit: opts.query_match_count },
         // Add Levenshtein distance field
         {
           $addFields: {
