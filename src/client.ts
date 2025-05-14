@@ -1011,7 +1011,8 @@ export class MongoDBDatabaseAdapter
     ];
     const rooms = await this.database
       .collection("participants")
-      .pipeline(pipeline);
+      .aggregate(pipeline)
+      .toArray();
     return rooms;
   }
 
