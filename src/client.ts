@@ -649,48 +649,62 @@ export class MongoDBDatabaseAdapter
     }));
   }
 
-  /**
-   * Optimized Levenshtein distance calculation with early termination
-   * and matrix reuse for better performance
-   */
-  private levenshteinFunctionString = `
-          function(text, searchTerm) {
-            function calculateLevenshteinDistance(str1, str2) {
-              if (str1 === str2) return 0;
-              if (str1.length === 0) return str2.length;
-              if (str2.length === 0) return str1.length;
-              
-              if (str1.length > str2.length) {
-                [str1, str2] = [str2, str1];
-              }
-          
-              const rows = str1.length + 1;
-              const cols = str2.length + 1;
-              let matrix = [];
-              for (let i = 0; i < rows; i++) {
-                matrix[i] = new Array(cols);
-              }
-              for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
-              for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
-          
-              for (let i = 1; i <= str1.length; i++) {
-                for (let j = 1; j <= str2.length; j++) {
-                  if (str1[i - 1] === str2[j - 1]) {
-                    matrix[i][j] = matrix[i - 1][j - 1];
-                  } else {
+  
+       /**
+     * Optimized Levenshtein distance calculation with early termination
+     * and matrix reuse for better performance
+     */
+    private calculateLevenshteinDistanceOptimized(str1: string, str2: string): number {
+        // Early termination for identical strings
+        if (str1 === str2) return 0;
+
+        // Early termination for empty strings
+        if (str1.length === 0) return str2.length;
+        if (str2.length === 0) return str1.length;
+
+        // Use shorter string as inner loop for better performance
+        if (str1.length > str2.length) {
+            [str1, str2] = [str2, str1];
+        }
+
+        // Reuse matrix to avoid garbage collection
+        const matrix = this.getLevenshteinMatrix(str1.length + 1, str2.length + 1);
+
+        // Initialize first row and column
+        for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
+        for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
+
+        // Calculate minimum edit distance
+        for (let i = 1; i <= str1.length; i++) {
+            for (let j = 1; j <= str2.length; j++) {
+                if (str1[i-1] === str2[j-1]) {
+                    matrix[i][j] = matrix[i-1][j-1];
+                } else {
                     matrix[i][j] = Math.min(
-                      matrix[i - 1][j - 1] + 1,
-                      matrix[i][j - 1] + 1,
-                      matrix[i - 1][j] + 1
+                        matrix[i-1][j-1] + 1,  // substitution
+                        matrix[i][j-1] + 1,    // insertion
+                        matrix[i-1][j] + 1     // deletion
                     );
-                  }
                 }
-              }
-              return matrix[str1.length][str2.length];
             }
-            return calculateLevenshteinDistance(text, searchTerm);
-          }
-          `;
+        }
+
+        return matrix[str1.length][str2.length];
+    }
+
+// Cache for reusing Levenshtein distance matrix
+    private levenshteinMatrix: number[][] = [];
+    private maxMatrixSize = 0;
+
+    private getLevenshteinMatrix(rows: number, cols: number): number[][] {
+        const size = rows * cols;
+        if (size > this.maxMatrixSize) {
+            this.levenshteinMatrix = Array(rows).fill(null)
+                .map(() => Array(cols).fill(0));
+            this.maxMatrixSize = size;
+        }
+        return this.levenshteinMatrix;
+    }
 
   async getCachedEmbeddings(opts: {
     query_table_name: string;
@@ -705,7 +719,7 @@ export class MongoDBDatabaseAdapter
     let results: { embedding: number[]; levenshtein_score: number }[] = [];
 
     try {
-      const pipelineRelevanceAndLevenshtein = [
+      const pipelineRelevance = [
         {
           $search: {
             index: "memoriesContent",
@@ -733,38 +747,35 @@ export class MongoDBDatabaseAdapter
             score: -1, // Sort by relevance score in descending order
           },
         },
-        { $limit: opts.query_match_count },
-        // Add Levenshtein distance field
-        {
-          $addFields: {
-            score: { $meta: "textScore" },
-            levDistance: {
-              $function: {
-                body: this.levenshteinFunctionString,
-                args: [
-                  `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
-                  opts.query_input,
-                ],
-                lang: "js",
-              },
-            },
-          },
-        },
-
-        // Sort by Levenshtein distance (closest matches first)
-        { $sort: { levDistance: 1 } },
-
-        // Limit results
-        { $limit: opts.query_match_count },
+        { $limit: opts.query_match_count * 2 },
+        
       ];
       const dataRelevanceAndLevenshtein = await this.database
         .collection("memories")
-        .aggregate(pipelineRelevanceAndLevenshtein)
-        .toArray();
-      // console.log(
-      //   "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
-      //   data,
-      // );
+        .aggregate(pipelineRelevance)
+        .toArray().map((memory) => {
+          try {
+            const levenshteinDistance = this.calculateLevenshteinDistanceOptimized(
+              opts.query_input,
+              memory.content[opts.query_field_name][opts.query_field_sub_name],
+            );
+            return {
+              embedding: memory.embedding,
+              levDistance: levenshteinDistance,
+            };
+           } catch (error) {
+              console.warn(`Error processing memory document: ${error}`);
+              return null;
+          }
+        })
+        // smaller levDistance should be first
+        .sort((a,b) => {
+          if (a.levDistance < b.levDistance) return -1;
+          if (a.levDistance > b.levDistance) return 1;
+          return 0;
+        });
+
+
       results = dataRelevanceAndLevenshtein.map(
         (it: { embedding: number[]; levDistance: number }) => {
           return {
