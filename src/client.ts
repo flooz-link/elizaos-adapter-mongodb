@@ -705,7 +705,7 @@ export class MongoDBDatabaseAdapter
     let results: { embedding: number[]; levenshtein_score: number }[] = [];
 
     try {
-      const pipeline = [
+      const pipelineRelevanceAndLevenshtein = [
         {
           $search: {
             index: "memoriesContent",
@@ -757,9 +757,9 @@ export class MongoDBDatabaseAdapter
         // Limit results
         { $limit: opts.query_match_count },
       ];
-      const data = await this.database
+      const dataRelevanceAndLevenshtein = await this.database
         .collection("memories")
-        .aggregate(pipeline)
+        .aggregate(pipelineRelevanceAndLevenshtein)
         .toArray();
       // console.log(
       //   "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
