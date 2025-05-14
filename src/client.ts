@@ -1007,7 +1007,7 @@ export class MongoDBDatabaseAdapter
       { $sort: { createdAt: -1 } },
       { $limit: 20 },
       { $group: { _id: null, rooms: { $addToSet: "$roomId" } } },
-      { $project: { _id: 0, rooms: 1 } }
+      { $project: { _id: 0, rooms: 1 } },
     ];
     const rooms = await this.database
       .collection("participants")
