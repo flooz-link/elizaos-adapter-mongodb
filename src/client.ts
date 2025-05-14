@@ -649,6 +649,49 @@ export class MongoDBDatabaseAdapter
     }));
   }
 
+  /**
+   * Optimized Levenshtein distance calculation with early termination
+   * and matrix reuse for better performance
+   */
+  private levenshteinFunctionString = `
+          function(text, searchTerm) {
+            function calculateLevenshteinDistance(str1, str2) {
+              if (str1 === str2) return 0;
+              if (str1.length === 0) return str2.length;
+              if (str2.length === 0) return str1.length;
+              
+              if (str1.length > str2.length) {
+                [str1, str2] = [str2, str1];
+              }
+          
+              const rows = str1.length + 1;
+              const cols = str2.length + 1;
+              let matrix = [];
+              for (let i = 0; i < rows; i++) {
+                matrix[i] = new Array(cols);
+              }
+              for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
+              for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
+          
+              for (let i = 1; i <= str1.length; i++) {
+                for (let j = 1; j <= str2.length; j++) {
+                  if (str1[i - 1] === str2[j - 1]) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                  } else {
+                    matrix[i][j] = Math.min(
+                      matrix[i - 1][j - 1] + 1,
+                      matrix[i][j - 1] + 1,
+                      matrix[i - 1][j] + 1
+                    );
+                  }
+                }
+              }
+              return matrix[str1.length][str2.length];
+            }
+            return calculateLevenshteinDistance(text, searchTerm);
+          }
+          `;
+
   async getCachedEmbeddings(opts: {
     query_table_name: string;
     query_threshold: number;
@@ -658,75 +701,78 @@ export class MongoDBDatabaseAdapter
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     await this.ensureConnection();
-    const BATCH_SIZE = 1000; // Process in chunks of 1000 documents
+
     let results: { embedding: number[]; levenshtein_score: number }[] = [];
 
     try {
-      // Get total count for progress tracking
-      const totalCount = await this.database
-        .collection("memories")
-        .countDocuments({
-          type: opts.query_table_name,
-          [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-            $exists: true,
-          },
-        });
-
-      let processed = 0;
-
-      while (processed < totalCount) {
-        // Fetch batch of documents
-        const memories = await this.database
-          .collection("memories")
-          .find({
-            type: opts.query_table_name,
-            [`content.${opts.query_field_name}.${opts.query_field_sub_name}`]: {
-              $exists: true,
+      const pipelineRelevanceAndLevenshtein = [
+        {
+          $search: {
+            index: "memoriesContent",
+            text: {
+              query: opts.query_input,
+              path: [
+                `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+                "content.text",
+              ],
             },
-          })
-          .skip(processed)
-          .limit(BATCH_SIZE)
-          .toArray();
+          },
+        },
+        {
+          $match: {
+            type: opts.query_table_name,
+          },
+        },
+        {
+          $addFields: {
+            score: { $meta: "searchScore" },
+          },
+        },
+        {
+          $sort: {
+            score: -1, // Sort by relevance score in descending order
+          },
+        },
+        { $limit: opts.query_match_count },
+        // Add Levenshtein distance field
+        {
+          $addFields: {
+            score: { $meta: "textScore" },
+            levDistance: {
+              $function: {
+                body: this.levenshteinFunctionString,
+                args: [
+                  `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+                  opts.query_input,
+                ],
+                lang: "js",
+              },
+            },
+          },
+        },
 
-        // Process batch
-        const batchResults = memories
-          .map((memory) => {
-            try {
-              const content =
-                memory.content[opts.query_field_name][
-                  opts.query_field_sub_name
-                ];
-              if (!content || typeof content !== "string") {
-                return null;
-              }
+        // Sort by Levenshtein distance (closest matches first)
+        { $sort: { levDistance: 1 } },
 
-              return {
-                embedding: Array.from(memory.embedding),
-                levenshtein_score: this.calculateLevenshteinDistanceOptimized(
-                  content.toLowerCase(),
-                  opts.query_input.toLowerCase(),
-                ),
-              };
-            } catch (error) {
-              console.warn(`Error processing memory document: ${error}`);
-              return null;
-            }
-          })
-          .filter(
-            (
-              result,
-            ): result is { embedding: number[]; levenshtein_score: number } =>
-              result !== null,
-          );
-
-        // Merge batch results
-        results = this.mergeAndSortResults(
-          results,
-          batchResults,
-          opts.query_match_count,
-        );
-        processed += memories.length;
-      }
+        // Limit results
+        { $limit: opts.query_match_count },
+      ];
+      const dataRelevanceAndLevenshtein = await this.database
+        .collection("memories")
+        .aggregate(pipelineRelevanceAndLevenshtein)
+        .toArray();
+      // console.log(
+      //   "[MongoDBDatabaseAdapter:getCachedEmbeddings] Data fetched from MongoDB:",
+      //   data,
+      // );
+      results = dataRelevanceAndLevenshtein.map(
+        (it: { embedding: number[]; levDistance: number }) => {
+          return {
+            embedding: it.embedding,
+            levenshtein_score: it.levDistance,
+          };
+        },
+      );
 
       return results;
     } catch (error) {
@@ -738,118 +784,6 @@ export class MongoDBDatabaseAdapter
       return [];
     }
   }
-
-  /**
-   * Optimized Levenshtein distance calculation with early termination
-   * and matrix reuse for better performance
-   */
-  private calculateLevenshteinDistanceOptimized(
-    str1: string,
-    str2: string,
-  ): number {
-    // Early termination for identical strings
-    if (str1 === str2) return 0;
-
-    // Early termination for empty strings
-    if (str1.length === 0) return str2.length;
-    if (str2.length === 0) return str1.length;
-
-    // Use shorter string as inner loop for better performance
-    if (str1.length > str2.length) {
-      [str1, str2] = [str2, str1];
-    }
-
-    // Reuse matrix to avoid garbage collection
-    const matrix = this.getLevenshteinMatrix(str1.length + 1, str2.length + 1);
-
-    // Initialize first row and column
-    for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
-    for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
-
-    // Calculate minimum edit distance
-    for (let i = 1; i <= str1.length; i++) {
-      for (let j = 1; j <= str2.length; j++) {
-        if (str1[i - 1] === str2[j - 1]) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // substitution
-            matrix[i][j - 1] + 1, // insertion
-            matrix[i - 1][j] + 1, // deletion
-          );
-        }
-      }
-    }
-
-    return matrix[str1.length][str2.length];
-  }
-
-  // Cache for reusing Levenshtein distance matrix
-  private levenshteinMatrix: number[][] = [];
-  private maxMatrixSize = 0;
-
-  private getLevenshteinMatrix(rows: number, cols: number): number[][] {
-    const size = rows * cols;
-    if (size > this.maxMatrixSize) {
-      this.levenshteinMatrix = Array(rows)
-        .fill(null)
-        .map(() => Array(cols).fill(0));
-      this.maxMatrixSize = size;
-    }
-    return this.levenshteinMatrix;
-  }
-
-  /**
-   * Efficiently merge and sort two arrays of results while maintaining top K items
-   */
-  private mergeAndSortResults(
-    existing: { embedding: number[]; levenshtein_score: number }[],
-    newResults: { embedding: number[]; levenshtein_score: number }[],
-    limit: number,
-  ): { embedding: number[]; levenshtein_score: number }[] {
-    const merged = [...existing, ...newResults];
-
-    // Use quick select algorithm if array is large
-    if (merged.length > 1000) {
-      return this.quickSelectTopK(merged, limit);
-    }
-
-    // Use simple sort for smaller arrays
-    return merged
-      .sort((a, b) => a.levenshtein_score - b.levenshtein_score)
-      .slice(0, limit);
-  }
-
-  /**
-   * Quick select algorithm to efficiently find top K items
-   */
-  private quickSelectTopK(
-    arr: { embedding: number[]; levenshtein_score: number }[],
-    k: number,
-  ): { embedding: number[]; levenshtein_score: number }[] {
-    if (arr.length <= k)
-      return arr.sort((a, b) => a.levenshtein_score - b.levenshtein_score);
-
-    const pivot = arr[Math.floor(Math.random() * arr.length)].levenshtein_score;
-    const left = arr.filter((x) => x.levenshtein_score < pivot);
-    const equal = arr.filter((x) => x.levenshtein_score === pivot);
-    const right = arr.filter((x) => x.levenshtein_score > pivot);
-
-    if (k <= left.length) {
-      return this.quickSelectTopK(left, k);
-    }
-    if (k <= left.length + equal.length) {
-      return [...left, ...equal.slice(0, k - left.length)].sort(
-        (a, b) => a.levenshtein_score - b.levenshtein_score,
-      );
-    }
-    return [
-      ...left,
-      ...equal,
-      ...this.quickSelectTopK(right, k - left.length - equal.length),
-    ].sort((a, b) => a.levenshtein_score - b.levenshtein_score);
-  }
-
   async updateGoalStatus(params: {
     goalId: UUID;
     status: GoalStatus;
