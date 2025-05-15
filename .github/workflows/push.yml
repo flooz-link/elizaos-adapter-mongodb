@@ -1,0 +1,32 @@
+name: elizaos-adapter-mongodb E2E Test Suite
+
+on:
+  pull_request:
+    branches:
+      - 'develop'
+      - 'main'
+    types: [opened, synchronize, reopened]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest 
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9.15.4
+      
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20.18.1'
+          cache: 'pnpm'
+
+      - name: Setup .npmrc file
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
+          echo "@flooz-link:registry=https://npm.pkg.github.com" >> .npmrc
+      
+      - run: pnpm install
+      - run: pnpm lint:check
