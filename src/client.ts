@@ -756,7 +756,8 @@ export class MongoDBDatabaseAdapter
         .collection("memories")
         .aggregate(pipelineRelevance)
         .toArray();
-       results =  dataRelevanceAndLevenshtein.map((memory) => {
+      results = dataRelevanceAndLevenshtein
+        .map((memory) => {
           try {
             const levenshteinDistance =
               this.calculateLevenshteinDistanceOptimized(
