@@ -771,8 +771,10 @@ export class MongoDBDatabaseAdapter
               levenshtein_score: levenshteinDistance,
             };
           } catch (error) {
-            console.warn(`Error processing memory document: ${error}`);
-            return null;
+            console.warn(
+              `[MongoDBDatabaseAdapter:getCachedEmbeddings] Error processing memory document: ${error}`,
+            );
+            return [];
           }
         })
         // smaller levenshtein_score should be first
@@ -785,9 +787,14 @@ export class MongoDBDatabaseAdapter
 
       return results;
     } catch (error) {
-      console.error("Error in getCachedEmbeddings:", error);
+      console.error(
+        "[MongoDBDatabaseAdapter:getCachedEmbeddings] Error in getCachedEmbeddings:",
+        error,
+      );
       if (results.length > 0) {
-        console.log("Returning partial results");
+        console.log(
+          "[MongoDBDatabaseAdapter:getCachedEmbeddings] Returning partial results",
+        );
         return results;
       }
       return [];
