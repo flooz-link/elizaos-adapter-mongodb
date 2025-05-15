@@ -773,7 +773,8 @@ export class MongoDBDatabaseAdapter
           if (a.levDistance < b.levDistance) return -1;
           if (a.levDistance > b.levDistance) return 1;
           return 0;
-        });
+        })
+        .slice(0, opts.query_match_count);
 
 
       results = dataRelevanceAndLevenshtein.map(
