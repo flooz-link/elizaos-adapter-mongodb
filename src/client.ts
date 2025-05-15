@@ -755,7 +755,8 @@ export class MongoDBDatabaseAdapter
       const dataRelevanceAndLevenshtein = await this.database
         .collection("memories")
         .aggregate(pipelineRelevance)
-        .toArray()
+        .toArray();
+      results = dataRelevanceAndLevenshtein
         .map((memory) => {
           try {
             const levenshteinDistance =
@@ -767,35 +768,33 @@ export class MongoDBDatabaseAdapter
               );
             return {
               embedding: memory.embedding,
-              levDistance: levenshteinDistance,
+              levenshtein_score: levenshteinDistance,
             };
           } catch (error) {
-            console.warn(`Error processing memory document: ${error}`);
-            return null;
+            console.warn(
+              `[MongoDBDatabaseAdapter:getCachedEmbeddings] Error processing memory document: ${error}`,
+            );
+            return [];
           }
         })
-        // smaller levDistance should be first
+        // smaller levenshtein_score should be first
         .sort((a, b) => {
-          if (a.levDistance < b.levDistance) return -1;
-          if (a.levDistance > b.levDistance) return 1;
+          if (a.levenshtein_score < b.levenshtein_score) return -1;
+          if (a.levenshtein_score > b.levenshtein_score) return 1;
           return 0;
         })
         .slice(0, opts.query_match_count);
 
-      results = dataRelevanceAndLevenshtein.map(
-        (it: { embedding: number[]; levDistance: number }) => {
-          return {
-            embedding: it.embedding,
-            levenshtein_score: it.levDistance,
-          };
-        },
-      );
-
       return results;
     } catch (error) {
-      console.error("Error in getCachedEmbeddings:", error);
+      console.error(
+        "[MongoDBDatabaseAdapter:getCachedEmbeddings] Error in getCachedEmbeddings:",
+        error,
+      );
       if (results.length > 0) {
-        console.log("Returning partial results");
+        console.log(
+          "[MongoDBDatabaseAdapter:getCachedEmbeddings] Returning partial results",
+        );
         return results;
       }
       return [];
