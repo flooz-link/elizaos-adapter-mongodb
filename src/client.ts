@@ -742,7 +742,7 @@ export class MongoDBDatabaseAdapter
               filter: [
                 {
                   text: {
-                    query: "messages",
+                    query: opts.query_table_name,
                     path: "type",
                   },
                 },
