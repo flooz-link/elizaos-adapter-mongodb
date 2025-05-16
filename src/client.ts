@@ -672,10 +672,80 @@ export class MongoDBDatabaseAdapter
 
     // Reuse matrix to avoid garbage collection
     const matrix = this.getLevenshteinMatrix(str1.length + 1, str2.length + 1);
+    const expectedRows = str1.length + 1;
+    const expectedCols = str2.length + 1;
+
+    // Defensive check: Ensure matrix is an array and has enough rows.
+    if (!matrix || matrix.length < expectedRows) {
+      const actualRows = matrix
+        ? matrix.length
+        : matrix === null
+          ? "null"
+          : "undefined";
+      console.error(
+        `[MongoDBDatabaseAdapter:calculateLevenshteinDistanceOptimized] Critical Error: Levenshtein matrix has insufficient rows. ` +
+          `Expected at least: ${expectedRows}, Got: ${actualRows}. str1.length: ${str1.length}.`,
+      );
+      throw new Error(
+        `Internal Levenshtein error: Matrix row dimension incorrect (expected ${expectedRows}, got ${actualRows}).`,
+      );
+    }
 
     // Initialize first row and column
-    for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
-    for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
+    for (let i = 0; i <= str1.length; i++) {
+      // Defensive check: Ensure the current row array exists.
+      if (matrix[i] === undefined) {
+        console.error(
+          `[MongoDBDatabaseAdapter:calculateLevenshteinDistanceOptimized] Error: Levenshtein matrix[${i}] is undefined during row initialization. ` +
+            `Matrix length: ${matrix.length}, str1.length: ${str1.length}. This indicates a severe matrix setup issue.`,
+        );
+        throw new Error(
+          `Internal Levenshtein error: Matrix row ${i} is unexpectedly undefined.`,
+        );
+      }
+      // Defensive check: Ensure the current row array has space for the 0-th column.
+      // This should be guaranteed if getLevenshteinMatrix ensures column dimensions,
+      // but adding it for extreme defensiveness.
+      if (matrix[i].length < 1 && expectedCols > 0) {
+        // Only matters if we expect columns
+        console.error(
+          `[MongoDBDatabaseAdapter:calculateLevenshteinDistanceOptimized] Error: Levenshtein matrix[${i}] is an empty array but columns are expected. ` +
+            `matrix[${i}].length: ${matrix[i].length}, expectedCols: ${expectedCols}.`,
+        );
+        throw new Error(
+          `Internal Levenshtein error: Matrix row ${i} is an empty array.`,
+        );
+      }
+      matrix[i][0] = i;
+    }
+
+    // Defensive check: Ensure the first row (matrix[0]) exists before column initialization.
+    // This should have been covered by the matrix.length check and matrix[i] check for i=0.
+    if (matrix[0] === undefined) {
+      console.error(
+        `[MongoDBDatabaseAdapter:calculateLevenshteinDistanceOptimized] Error: Levenshtein matrix[0] is undefined before column initialization. ` +
+          `This indicates a severe matrix setup issue.`,
+      );
+      throw new Error(
+        `Internal Levenshtein error: Matrix row 0 is unexpectedly undefined for column init.`,
+      );
+    }
+
+    // Defensive check: Ensure matrix[0] has enough columns.
+    if (matrix[0].length < expectedCols) {
+      console.error(
+        `[MongoDBDatabaseAdapter:calculateLevenshteinDistanceOptimized] Critical Error: Levenshtein matrix[0] has insufficient columns. ` +
+          `Expected at least: ${expectedCols}, Got: ${matrix[0].length}. str2.length: ${str2.length}.`,
+      );
+      throw new Error(
+        `Internal Levenshtein error: Matrix column dimension incorrect for row 0 (expected ${expectedCols}, got ${matrix[0].length}).`,
+      );
+    }
+
+    for (let j = 0; j <= str2.length; j++) {
+      // The matrix[0].length check above should ensure matrix[0][j] is a valid access.
+      matrix[0][j] = j;
+    }
 
     // Calculate minimum edit distance
     for (let i = 1; i <= str1.length; i++) {
@@ -697,16 +767,27 @@ export class MongoDBDatabaseAdapter
 
   // Cache for reusing Levenshtein distance matrix
   private levenshteinMatrix: number[][] = [];
-  private maxMatrixSize = 0;
 
   private getLevenshteinMatrix(rows: number, cols: number): number[][] {
-    const size = rows * cols;
-    if (size > this.maxMatrixSize) {
+    // Ensure the cached matrix is large enough for the current request.
+    // `rows` is str1.length + 1, `cols` is str2.length + 1.
+    // Both `rows` and `cols` will be >= 1 due to prior checks in calculateLevenshteinDistanceOptimized.
+    if (
+      this.levenshteinMatrix.length < rows ||
+      // Check if the first row exists before checking its length, or if cols are needed but no rows exist.
+      (this.levenshteinMatrix.length > 0 &&
+        (this.levenshteinMatrix[0]?.length || 0) < cols) ||
+      (this.levenshteinMatrix.length === 0 && cols > 0) // Handles case where matrix is [] but cols are needed
+    ) {
+      // If current matrix is too small in either dimension, create a new one.
+      // The fill(0) is not strictly necessary as the calling function initializes
+      // the parts it uses, but it's safer.
       this.levenshteinMatrix = Array(rows)
         .fill(null)
         .map(() => Array(cols).fill(0));
-      this.maxMatrixSize = size;
     }
+    // If the matrix was already large enough, it's reused.
+    // The calculateLevenshteinDistanceOptimized function will only use up to matrix[rows-1][cols-1].
     return this.levenshteinMatrix;
   }
 
