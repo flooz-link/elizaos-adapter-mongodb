@@ -16,6 +16,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { v4 } from "uuid";
+import { removeStopwords, eng } from "stopword";
 
 interface KnowledgeDocument {
   id: UUID;
@@ -726,18 +727,27 @@ export class MongoDBDatabaseAdapter
         {
           $search: {
             index: "memoriesContent",
-            text: {
-              query: opts.query_input,
-              path: [
-                `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
-                "content.text",
+            compound: {
+              must: [
+                {
+                  text: {
+                    query: this.sanitizeQuery(opts.query_input),
+                    path: [
+                      `content.${opts.query_field_name}.${opts.query_field_sub_name}`,
+                      "content.text",
+                    ],
+                  },
+                },
+              ],
+              filter: [
+                {
+                  text: {
+                    query: "messages",
+                    path: "type",
+                  },
+                },
               ],
             },
-          },
-        },
-        {
-          $match: {
-            type: opts.query_table_name,
           },
         },
         {
@@ -800,6 +810,17 @@ export class MongoDBDatabaseAdapter
       return [];
     }
   }
+
+  // Basic usage with English stopwords, it works with other languages too  but its not optimized
+  private sanitizeQuery(input: string): string {
+    // Convert to lowercase and split into words
+    const words = input.toLowerCase().split(/\s+/);
+
+    const filteredWords = removeStopwords(words, eng);
+
+    return filteredWords.join(" ");
+  }
+
   async updateGoalStatus(params: {
     goalId: UUID;
     status: GoalStatus;
